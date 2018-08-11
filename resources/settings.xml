@@ -13,8 +13,10 @@
 		<setting id="prefres" label="Prefere Resolution" type="labelenum" values="360p|480p|720p|1080p" default="1080p"/>
 		<setting id="autoplay" label="Automatically play first result" type="bool" default="false"/>
 	</category>
+	<category label="Episode Tracking">
+		<setting id="episodetracking" type="labelenum" label="Episode Tracking" values="9anime|Kitsu|No Tracking" default="No Tracking"/>
+	</category>
 	<category label="9anime Login">
-		<setting id="9anime.eptrack" type="labelenum" label="Enable 9anime Episode Tracking" values="Yes|No" default="No"/>
 		<setting type="lsep" label="9anime Login"/>
         	<setting id="9anime.username" type="text" label="Username:" default=""/>
         	<setting id="9anime.password" type="text" option="hidden" label="Password:" default=""/>
@@ -22,5 +24,11 @@
 
 		<setting type="lsep" label="9anime Login TLD"/>
 		<setting id="9anime.login_tld" type="text" label="Domain Prefix" default="www8"/>
+	</category>
+	<category label="Kitsu Login">
+		<setting type="lsep" label="Kitsu Login"/>
+        	<setting id="kitsu.email" type="text" label="Email:" default=""/>
+        	<setting id="kitsu.password" type="text" option="hidden" label="Password:" default=""/>
+		<setting id="kitsu.login" type="action" label="Click to Login..." option="close" action="RunPlugin(plugin://plugin.video.9anime/kitsu_login)"/>
 	</category>
 </settings>
