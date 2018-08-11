@@ -7,17 +7,18 @@ import urlparse
 
 AB_LIST = [".", "0"] + [chr(i) for i in range(ord("A"), ord("Z")+1)]
 MENU_ITEMS = [
-    (control.lang(30009), "watchlist", True),
-    (control.lang(30000), "latest", False),
-    (control.lang(30001), "newest", False),
-    (control.lang(30002), "recent_subbed", False),
-    (control.lang(30003), "popular_subbed", False),
-    (control.lang(30004), "recent_dubbed", False),
-    (control.lang(30005), "popular_dubbed", False),
-    (control.lang(30006), "genres", False),
-    (control.lang(30007), "search_history", False),
-    (control.lang(30008), "settings", False),
-    (control.lang(30010), "logout", True),
+    (control.lang(30011) + "[I]%s[/I]" %(control.getSetting("last_viewed.name")), "animes/" + control.getSetting("last_viewed.url"), False, control.getSetting("last_viewed.image")),
+    (control.lang(30009), "watchlist", True, ''),
+    (control.lang(30000), "latest", False, ''),
+    (control.lang(30001), "newest", False, ''),
+    (control.lang(30002), "recent_subbed", False, ''),
+    (control.lang(30003), "popular_subbed", False, ''),
+    (control.lang(30004), "recent_dubbed", False, ''),
+    (control.lang(30005), "popular_dubbed", False, ''),
+    (control.lang(30006), "genres", False, ''),
+    (control.lang(30007), "search_history", False, ''),
+    (control.lang(30008), "settings", False, ''),
+    (control.lang(30010), "logout", True, ''),
 ]
 SERVER_CHOICES = {
     "serverstreamango": "Streamango",
@@ -107,12 +108,14 @@ def update_bookmark_cm(u):
          (sysaddon,u)),
     ]
 
-def bookmark_episode_playing(link):
+def bookmark_episode_playing(link, anime_url, episode):
     if not _BROWSER.is_logged_in():
         return None
 
-    if "Yes" in control.getSetting('9anime.eptrack'):
+    if "9anime" in control.getSetting('episodetracking'):
         return _BROWSER.episode_playing(link)
+    if "Kitsu" in control.getSetting('episodetracking'):
+        return _BROWSER.kitsu_epi_tracking(anime_url, episode)
     else:
         return None
 
@@ -136,6 +139,10 @@ def LOGOUT(payload, params):
 @route('login_refresh')
 def LOGIN_REFRESH(payload, params):
     _BROWSER.login_refresh()
+
+@route('kitsu_login')
+def KITSU_LOGIN(payload, params):
+    _BROWSER.kitsu_login()
 
 @route('settings')
 def SETTINGS(payload, params):
@@ -321,7 +328,7 @@ def PLAY(payload, params):
             return control.draw_items(items)
     else:
         res = control.play_source(s.get_video_link())
-        bookmark_episode_playing(sources[0])
+        bookmark_episode_playing(sources[0], anime_url, episode)
         return res
 
 @route('playlink*')
@@ -333,6 +340,6 @@ def LIST_MENU(payload, params):
     is_logged_in = _BROWSER.is_logged_in()
     menu_items = filter(lambda x: not x[2] or is_logged_in, MENU_ITEMS)
 
-    return control.draw_items([utils.allocate_item(name, url, True, '') for name, url, logged_only in menu_items])
+    return control.draw_items([utils.allocate_item(name, url, True, image) for name, url, logged_only, image in menu_items])
 
 router_process(control.get_plugin_url(), control.get_plugin_params())
