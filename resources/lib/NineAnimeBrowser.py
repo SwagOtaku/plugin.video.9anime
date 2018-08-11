@@ -4,7 +4,7 @@ from ui import utils
 from ui import BrowserBase
 from ui import http
 from ui import control
-import json,xbmcgui,xbmcaddon,requests,xbmc,bs4 as bs
+import json,xbmcgui,xbmcaddon,requests,xbmc,bs4 as bs,sys
 
 from ui.embed_extractor import set_9anime_extra
 set_9anime_extra(777)
@@ -29,8 +29,6 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
     _EPISODES_RE = \
     re.compile("<li>\s<a.+?data-id=\"(.+?)\" data-base=\"(\d+)\".+?data-comment=\"(.+?)\".+?data-title=\"(.+?)\".+?href=\"\/watch\/.+?\">(.+?)</a>\s</li>",
                re.DOTALL)
-    _PLOT_RE = \
-    re.compile('<div class="desc">(.+?)</div>', re.DOTALL)
     _EPISODE_IMAGE_RE = \
     re.compile('<div class="thumb col-md-5 hidden-sm hidden-xs"> <img src="(.+?)\"', re.DOTALL)
     _EPISODE_PANEL_RE = \
@@ -109,14 +107,22 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
         resp = self._get_request(self._to_url("/watch/%s" % url))
         return self._extract_anime_extra(resp)['plot']
 
-    def _extract_anime_extra(self, resp):
-        replot = self._PLOT_RE.findall(resp)
+    def _extract_anime_extra(self, resp, anime_url):
+        control.setSetting("9anime.resp", resp)
+        soup = bs.BeautifulSoup(resp, 'html.parser')
+        rename = soup.select('h1.title')[0].text.strip()
+        plot = soup.find("div", {"class": "desc"}).text
         reimage = self._EPISODE_IMAGE_RE.findall(resp)
-        plot = ''.join(replot)
+        last_viewed = self.last_viewed(anime_url, rename, reimage[0])
         return {
             "plot": plot,
             "image": reimage[0],
         }
+
+    def last_viewed(self, url, name, image):
+        control.setSetting("last_viewed.url", url)
+        control.setSetting("last_viewed.name", name)
+        control.setSetting("last_viewed.image", image)
 
     def _process_anime_view(self, url, data, base_plugin_url, page):
         results = self._get_request(url, data)
@@ -155,7 +161,7 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
 
     def _get_anime_info(self, anime_url):
         resp = self._get_request(self._to_url("/watch/%s" % anime_url))
-        extra_data = self._extract_anime_extra(resp)
+        extra_data = self._extract_anime_extra(resp, anime_url)
 
         servers_url = self._url_to_film(anime_url)
         resp = json.loads(self._get_request(servers_url))["html"]
@@ -414,3 +420,112 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
         except:
             dialog = xbmcgui.Dialog()
             dialog.ok(control.lang(30203), control.lang(30204))
+
+    def kitsu_login(self):
+        try:
+            token_url = 'https://kitsu.io/api/oauth/token'
+            resp = requests.post(token_url, params={"grant_type": "password", "username": '%s' %(control.getSetting("kitsu.email")), "password": '%s' %(control.getSetting("kitsu.password"))})
+            token = json.loads(resp.text)['access_token']
+            control.setSetting("kitsu.token", token)
+            useridScrobble_resp = requests.get('https://kitsu.io/api/edge/users?filter[self]=true', headers=self.kitsu_headers())
+            userid = json.loads(useridScrobble_resp.text)['data'][0]['id']
+            control.setSetting("kitsu.userid", userid) 
+            dialog = xbmcgui.Dialog()
+            dialog.ok(control.lang(30400), control.lang(30401))
+        except:
+            dialog = xbmcgui.Dialog()
+            dialog.ok(control.lang(30400), control.lang(30402))
+
+    def kitsu_epi_tracking(self, anime_id, episode):
+        name = anime_id.split('.')[0]
+        episode = self.kitsu_epi_number(episode)
+        resp = control.getSetting("9anime.resp")
+        soup = bs.BeautifulSoup(resp, 'html.parser')
+        desc = soup.find("div", {"class": "desc"}).text
+        anime_type = soup.find('dt', string='Type:').find_next_sibling('dd').text
+
+        try:
+            premiered = soup.find('dt', string='Premiered:').find_next_sibling('dd').text
+        except:
+            premiered = ''
+
+        if not desc:
+            dialog = xbmcgui.Dialog()
+            dialog.ok(control.lang(30404), control.lang(30403))
+            sys.exit()
+
+        if premiered is '':
+            initScrobble_url = 'https://kitsu.io/api/edge/anime?filter[text]=%s&filter[subtype]=%s' %(name, anime_type)
+        else:
+            season = premiered.split(" ")[0]
+            season = season.lower()
+            season_year = premiered.split(" ")[1]
+            initScrobble_url = 'https://kitsu.io/api/edge/anime?filter[text]=%s&filter[season]=%s&filter[season_year]=%s&filter[subtype]=%s' %(name, season, season_year, anime_type)
+
+        initScrobble_resp = requests.get(initScrobble_url).text
+        match = re.compile('"data":\[{"id":"(.+?)"').findall(initScrobble_resp)
+        anime_id = int(match[0])
+        user_id = int(control.getSetting("kitsu.userid"))
+        libraryEntry_url = 'https://kitsu.io/api/edge/library-entries/'
+        libraryScrobble_url = 'https://kitsu.io/api/edge/library-entries?filter[animeId]=%d&filter[userId]=%d' %(anime_id, user_id)
+        libraryScrobble_resp = requests.get(libraryScrobble_url).text
+        item_dict = json.loads(libraryScrobble_resp)
+        if len(item_dict['data']) == 0:
+            data = {"status": "current",
+                    "progress": episode
+                    }
+            item_type = 'anime'
+            final_dict = {
+                    "data": {
+                        "type": "libraryEntries",
+                        "attributes": data,
+                        "relationships":{
+                            "user":{
+                                "data":{
+                                    "id": user_id,
+                                    "type": "users"
+                                }
+                            },
+                            "anime":{
+                                "data":{
+                                    "id": anime_id,
+                                    "type": item_type
+                                }
+                            }
+                        }
+                    }
+                }
+
+            data = json.dumps(final_dict, separators=(',',':'))
+            libraryEntry_post = requests.post(libraryEntry_url, headers=self.kitsu_headers(), data=data)
+        else:
+            _id = item_dict['data'][0]['id']
+            final_dict = {
+                'data': {
+                    'id': _id,
+                    'type': 'libraryEntries',
+                    'attributes': {
+                        'status': 'current',
+                        'progress': episode
+                        }
+                    }
+                }
+
+            data = json.dumps(final_dict, separators=(',',':'))
+            libraryEntry_patch = requests.patch(libraryEntry_url + _id, headers=self.kitsu_headers(), data=data)
+
+    def kitsu_headers(self):
+        token = control.getSetting("kitsu.token")
+        headers = {
+            'Content-Type': 'application/vnd.api+json',
+            'Accept': 'application/vnd.api+json',
+            'Authorization': "Bearer {}".format(token),
+            }
+        return headers
+
+    def kitsu_epi_number(self, episode):
+        episode = filter(lambda x: x.isdigit(), episode)
+        #This is for episodes named Full
+        if not episode:
+            episode = 1
+        return episode
