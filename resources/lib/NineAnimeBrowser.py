@@ -353,7 +353,7 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
             control.setSetting(id='login.tokenrem', value=remember_me)
             control.setSetting(id='login.tokenses', value=session)
             control.setSetting(id='login.tokencfd', value=cfduid)
-            control.setSetting(id='login.auth', value='loggedin')
+            control.setSetting(id='login.auth', value='9anime')
             dialog = xbmcgui.Dialog()
             dialog.ok(control.lang(30200), json.loads(p.text)['message'])
             control.refresh()
@@ -380,7 +380,7 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
             control.setSetting(id='login.tokenrem', value=remember_me)
             control.setSetting(id='login.tokenses', value=session)
             control.setSetting(id='login.tokencfd', value=cfduid)
-            control.setSetting(id='login.auth', value='loggedin')
+            control.setSetting(id='login.auth', value='9anime')
             dialog = xbmcgui.Dialog()
             dialog.ok(control.lang(30200), control.lang(30202))
         except:
@@ -421,6 +421,14 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
             dialog = xbmcgui.Dialog()
             dialog.ok(control.lang(30203), control.lang(30204))
 
+    def numerize_epi_number(self, episode):
+        #This is for episodes named Full and -Uncen
+        episode = filter(lambda x: x.isdigit(), episode)
+        if not episode:
+            episode = '1'
+        episode = episode.lstrip('0')
+        return episode
+
     def kitsu_login(self):
         try:
             token_url = 'https://kitsu.io/api/oauth/token'
@@ -429,16 +437,34 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
             control.setSetting("kitsu.token", token)
             useridScrobble_resp = requests.get('https://kitsu.io/api/edge/users?filter[self]=true', headers=self.kitsu_headers())
             userid = json.loads(useridScrobble_resp.text)['data'][0]['id']
-            control.setSetting("kitsu.userid", userid) 
+            control.setSetting("kitsu.userid", userid)
+            control.setSetting("kitsu.login_auth", 'Kitsu')
             dialog = xbmcgui.Dialog()
             dialog.ok(control.lang(30400), control.lang(30401))
         except:
             dialog = xbmcgui.Dialog()
             dialog.ok(control.lang(30400), control.lang(30402))
 
-    def kitsu_epi_tracking(self, anime_id, episode):
+    def kitsu_logout(self):
+        control.setSetting("kitsu.token", '')
+        control.setSetting("kitsu.userid", '')
+        control.setSetting("kitsu.login_auth", '')
+        control.refresh()
+        dialog = xbmcgui.Dialog()
+        dialog.ok(control.lang(30400), control.lang(30602))
+
+    def kitsu_headers(self):
+        token = control.getSetting("kitsu.token")
+        headers = {
+            'Content-Type': 'application/vnd.api+json',
+            'Accept': 'application/vnd.api+json',
+            'Authorization': "Bearer {}".format(token),
+            }
+        return headers
+
+    def kitsu_initScrobble(self, anime_id, episode):
         name = anime_id.split('.')[0]
-        episode = self.kitsu_epi_number(episode)
+        episode = self.numerize_epi_number(episode)
         resp = control.getSetting("9anime.resp")
         soup = bs.BeautifulSoup(resp, 'html.parser')
         desc = soup.find("div", {"class": "desc"}).text
@@ -464,10 +490,13 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
 
         initScrobble_resp = requests.get(initScrobble_url).text
         match = re.compile('"data":\[{"id":"(.+?)"').findall(initScrobble_resp)
-        anime_id = int(match[0])
+        kitsu_anime_id = int(match[0])
+        return self.kitsu_scrobbleAnime(kitsu_anime_id, episode)
+
+    def kitsu_scrobbleAnime(self, kitsu_anime_id, episode):
         user_id = int(control.getSetting("kitsu.userid"))
         libraryEntry_url = 'https://kitsu.io/api/edge/library-entries/'
-        libraryScrobble_url = 'https://kitsu.io/api/edge/library-entries?filter[animeId]=%d&filter[userId]=%d' %(anime_id, user_id)
+        libraryScrobble_url = libraryEntry_url + '?filter[animeId]=%d&filter[userId]=%d' %(kitsu_anime_id, user_id)
         libraryScrobble_resp = requests.get(libraryScrobble_url).text
         item_dict = json.loads(libraryScrobble_resp)
         if len(item_dict['data']) == 0:
@@ -488,7 +517,7 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
                             },
                             "anime":{
                                 "data":{
-                                    "id": anime_id,
+                                    "id": kitsu_anime_id,
                                     "type": item_type
                                 }
                             }
@@ -498,6 +527,9 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
 
             data = json.dumps(final_dict, separators=(',',':'))
             libraryEntry_post = requests.post(libraryEntry_url, headers=self.kitsu_headers(), data=data)
+            if libraryEntry_post.status_code != 201:
+                dialog = xbmcgui.Dialog()
+                dialog.ok(control.lang(30404), control.lang(30405))
         else:
             _id = item_dict['data'][0]['id']
             final_dict = {
@@ -513,19 +545,88 @@ class NineAnimeBrowser(BrowserBase.BrowserBase):
 
             data = json.dumps(final_dict, separators=(',',':'))
             libraryEntry_patch = requests.patch(libraryEntry_url + _id, headers=self.kitsu_headers(), data=data)
+            if libraryEntry_patch.status_code != 200:
+                dialog = xbmcgui.Dialog()
+                dialog.ok(control.lang(30404), control.lang(30405))
 
-    def kitsu_headers(self):
-        token = control.getSetting("kitsu.token")
-        headers = {
-            'Content-Type': 'application/vnd.api+json',
-            'Accept': 'application/vnd.api+json',
-            'Authorization': "Bearer {}".format(token),
-            }
-        return headers
+    def mal_login(self):
+        try:         
+            url = "https://myanimelist.net/login.php?from=%2F"
+            with requests.session() as s:
+                token_url = s.get('https://myanimelist.net/').text
+                crsf = re.compile("<meta name='csrf_token' content='(.+?)'>").findall(token_url)
+                token = crsf[0]
 
-    def kitsu_epi_number(self, episode):
-        episode = filter(lambda x: x.isdigit(), episode)
-        #This is for episodes named Full
-        if not episode:
-            episode = 1
-        return episode
+                payload = {
+                    "user_name": control.getSetting("mal.username"),
+                    "password": control.getSetting("mal.password"),
+                    "cookie": 1,
+                    "sublogin": "Login",
+                    "submit": 1,
+                    "csrf_token": token
+                    }
+                # fetch the login page
+                s.get(url)
+
+                # post to the login form
+                s.post(url, data=payload)
+                control.setSetting("mal.logsessid", s.cookies['MALHLOGSESSID'])
+                control.setSetting("mal.sessionid", s.cookies['MALSESSIONID'])
+                control.setSetting("mal.login_auth", "MyAnimeList")
+            dialog = xbmcgui.Dialog()
+            dialog.ok(control.lang(30500), control.lang(30501))           
+        except:
+            dialog = xbmcgui.Dialog()
+            dialog.ok(control.lang(30500), control.lang(30502))
+
+    def mal_logout(self):
+        control.setSetting("mal.logsessid", '')
+        control.setSetting("mal.sessionid", '')
+        control.setSetting("mal.login_auth", '')
+        control.refresh()
+        dialog = xbmcgui.Dialog()
+        dialog.ok(control.lang(30500), control.lang(30602))
+
+    def mal_initScrobble(self, anime_id, episode):
+        name = anime_id.split('.')[0]
+        episode = self.numerize_epi_number(episode)
+        resp = control.getSetting("9anime.resp")
+        soup = bs.BeautifulSoup(resp, 'html.parser')
+        date_aired = soup.find('dt', string='Date aired:').find_next_sibling('dd').text
+        date_aired = (date_aired.replace(' 0',' ')).strip()
+        
+        mal_search = requests.get('https://myanimelist.net/search/prefix.json?type=anime&keyword=%s&v=1' %(name))
+        data = json.loads(mal_search.text)
+        for i in data['categories'][0]['items']:
+            if i['payload']['aired'] == date_aired:
+                mal_anime_id = i['id']
+                mal_anime_url = i['url']
+                return self.mal_interScrobble(episode, mal_anime_id, mal_anime_url)
+
+    def mal_interScrobble(self, episode, mal_anime_id, mal_anime_url):
+        cookie = {'MALHLOGSESSID': '%s' %(control.getSetting("mal.logsessid")), 'MALSESSIONID': '%s' %(control.getSetting("mal.sessionid")), 'is_logged_in': '1'}
+        result = requests.get(mal_anime_url, cookies=cookie).text
+        crsf = re.compile("<meta name='csrf_token' content='(.+?)'>").findall(result)
+        token = crsf[0]
+        soup = bs.BeautifulSoup(result, 'html.parser')
+        match = soup.find('h2', {'class' : 'mt8'})
+        if not match:
+            url = 'https://myanimelist.net/ownlist/anime/add.json'
+        else:
+            url = 'https://myanimelist.net/ownlist/anime/edit.json'
+        return self.mal_scrobbleAnime(url, episode, mal_anime_id, token)
+
+    def mal_scrobbleAnime(self, url, episode, mal_anime_id, token):
+        data = {"anime_id": int(mal_anime_id),
+                "status": 1,
+                "score": 0,
+                "num_watched_episodes": int(episode),
+                "csrf_token": "%s" %(token)
+                }
+        cookie = {'MALHLOGSESSID': '%s' %(control.getSetting("mal.logsessid")), 'MALSESSIONID': '%s' %(control.getSetting("mal.sessionid")), 'is_logged_in': '1'}
+        headers = {'Content-Type': 'application/json'}
+        data = json.dumps(data, separators=(',',':'))
+        results = requests.post(url, headers=headers, cookies=cookie, data=data)
+        if results.status_code != 200:
+            dialog = xbmcgui.Dialog()
+            dialog.ok(control.lang(30504), control.lang(30505))
