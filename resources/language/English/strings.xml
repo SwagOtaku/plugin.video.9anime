@@ -35,10 +35,22 @@
 	<string id="30305">Plan To Watch</string>
 
 	<string id="30400">Kitsu Login</string>
-	<string id="30401">Login Successful</string>
+	<string id="30401">Kitsu Login Successful</string>
 	<string id="30402">Login Error. Incorrect email or password.</string>
 	<string id="30403">Anime not in Kitsu database or update user library using other device</string>
 	<string id="30404">Kitsu Tracking"</string>
+	<string id="30405">Kitsu scrobble error. Try relogging in to resolve error.</string>
+
+	<string id="30500">MyAnimeList Login</string>
+	<string id="30501">MyAnimeList Login Successful</string>
+	<string id="30502">Login Error. Incorrect username or password.</string>
+	<string id="30503">Anime not in MyAnimeList database or tracking error</string>
+	<string id="30504">MyAnimeList Tracking"</string>
+	<string id="30505">MyAnimeList scrobble error. Try relogging in to resolve error.</string>
+
+	<string id="30600">Episode Tracking</string>
+	<string id="30601">Not logged into site that you want to sync anime with</string>
+	<string id="30602">Logged Out</string>
 
 	<string id="40000">Add To </string>
 	<string id="40001">Move To </string>
