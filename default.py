@@ -4,6 +4,7 @@ from resources.lib.ui.SourcesList import SourcesList
 from resources.lib.ui.router import on_param, route, router_process
 from resources.lib.NineAnimeBrowser import NineAnimeBrowser
 import urlparse
+import xbmcgui
 
 AB_LIST = [".", "0"] + [chr(i) for i in range(ord("A"), ord("Z")+1)]
 MENU_ITEMS = [
@@ -109,15 +110,17 @@ def update_bookmark_cm(u):
     ]
 
 def bookmark_episode_playing(link, anime_url, episode):
-    if not _BROWSER.is_logged_in():
+    if "No Tracking" in  control.getSetting('episodetracking'):
         return None
-
-    if "9anime" in control.getSetting('episodetracking'):
+    if control.getSetting('episodetracking') == control.getSetting('login.auth'):
         return _BROWSER.episode_playing(link)
-    if "Kitsu" in control.getSetting('episodetracking'):
-        return _BROWSER.kitsu_epi_tracking(anime_url, episode)
+    if control.getSetting('episodetracking') == control.getSetting('kitsu.login_auth'):
+        return _BROWSER.kitsu_initScrobble(anime_url, episode)
+    if control.getSetting('episodetracking') == control.getSetting('mal.login_auth'):
+        return _BROWSER.mal_initScrobble(anime_url, episode)
     else:
-        return None
+        dialog = xbmcgui.Dialog()
+        dialog.notification(control.lang(30600), control.lang(30601), xbmcgui.NOTIFICATION_ERROR)
 
 @on_param('action', 'bookmark')
 def BOOKMARK_ACTION(payload, params):
@@ -143,6 +146,18 @@ def LOGIN_REFRESH(payload, params):
 @route('kitsu_login')
 def KITSU_LOGIN(payload, params):
     _BROWSER.kitsu_login()
+
+@route('kitsu_logout')
+def KITSU_LOGOUT(payload, params):
+    _BROWSER.kitsu_logout()
+
+@route('mal_login')
+def MAL_LOGIN(payload, params):
+    _BROWSER.mal_login()
+
+@route('mal_logout')
+def MAL_LOGOUT(payload, params):
+    _BROWSER.mal_logout()
 
 @route('settings')
 def SETTINGS(payload, params):
